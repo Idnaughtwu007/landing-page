@@ -1,173 +1,198 @@
-// Real-time Deriv API integration for live market data with precise digit analysis
-const DERIV_API = {
-  appId: 1089, // Your Deriv app ID
-  baseUrl: 'wss://ws.derivws.com/websockets/v3',
-  connection: null,
-  subscriptions: new Map(),
-  requestId: 1,
-};
+// Real-time Deriv API WebSocket Integration
+// Deriv WebSocket URL: wss://ws.derivws.com/websockets/v3
+// Documentation: https://api.deriv.com/docs/websocket/
 
-class DerivMarketDataSync {
+class DerivWebSocketManager {
   constructor() {
-    this.connection = null;
+    this.ws = null;
     this.requestId = 1;
     this.subscriptions = new Map();
-    this.priceHistory = [];
-    this.digitHistory = [];
+    this.isConnected = false;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 10;
+    this.reconnectDelay = 3000;
     this.listeners = [];
-    this.windowSize = 100; // Analyze last 100 ticks
+    
+    // Deriv WebSocket configuration
+    this.config = {
+      url: 'wss://ws.derivws.com/websockets/v3',
+      appId: 1089, // Default Deriv app ID
+      language: 'EN'
+    };
   }
 
   connect() {
     return new Promise((resolve, reject) => {
       try {
-        this.connection = new WebSocket(DERIV_API.baseUrl);
+        console.log('🔗 Connecting to Deriv WebSocket...');
+        this.ws = new WebSocket(this.config.url);
 
-        this.connection.onopen = () => {
-          console.log('✓ Connected to Deriv Real-time Feed');
-          this.authorize();
-          resolve();
+        this.ws.onopen = () => {
+          console.log('✓ Deriv WebSocket Connected');
+          this.isConnected = true;
+          this.reconnectAttempts = 0;
+          this.ping(); // Send ping to keep connection alive
+          resolve(this);
         };
 
-        this.connection.onmessage = (event) => {
+        this.ws.onmessage = (event) => {
           this.handleMessage(JSON.parse(event.data));
         };
 
-        this.connection.onerror = (error) => {
-          console.error('✗ Deriv connection error:', error);
+        this.ws.onerror = (error) => {
+          console.error('✗ WebSocket Error:', error);
+          this.isConnected = false;
           reject(error);
         };
 
-        this.connection.onclose = () => {
-          console.log('Deriv connection closed. Reconnecting in 3s...');
-          setTimeout(() => this.connect(), 3000);
+        this.ws.onclose = () => {
+          console.log('⚠ WebSocket Closed');
+          this.isConnected = false;
+          this.attemptReconnect();
         };
       } catch (error) {
+        console.error('✗ Connection failed:', error);
         reject(error);
       }
     });
   }
 
-  authorize() {
-    const authRequest = {
-      authorize: localStorage.getItem('deriv.auth.token') || '',
-      req_id: this.requestId++,
-    };
-    this.connection.send(JSON.stringify(authRequest));
+  attemptReconnect() {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++;
+      console.log(`🔄 Reconnecting... Attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+      setTimeout(() => this.connect(), this.reconnectDelay);
+    } else {
+      console.error('✗ Max reconnection attempts reached');
+    }
   }
 
-  subscribeToPrices(symbols = ['Volatility 10 Index', 'Volatility 50 Index', 'Volatility 100 Index']) {
-    symbols.forEach(symbol => {
-      const request = {
-        ticks: symbol,
-        req_id: this.requestId++,
-      };
-      this.connection.send(JSON.stringify(request));
-      this.subscriptions.set(symbol, { 
+  ping() {
+    // Send ping every 30 seconds to keep connection alive
+    setInterval(() => {
+      if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.send({ ping: 1 });
+      }
+    }, 30000);
+  }
+
+  send(payload) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(payload));
+    } else {
+      console.warn('WebSocket not connected. Cannot send:', payload);
+    }
+  }
+
+  handleMessage(data) {
+    // Handle errors
+    if (data.error) {
+      console.error('Deriv API Error:', data.error.message);
+      return;
+    }
+
+    // Handle pong
+    if (data.pong) {
+      console.log('✓ Pong received');
+      return;
+    }
+
+    // Handle tick data (live prices)
+    if (data.tick) {
+      this.processTick(data);
+    }
+
+    // Handle subscription confirmations
+    if (data.subscription) {
+      console.log('✓ Subscription confirmed:', data.subscription.id);
+    }
+
+    // Notify all listeners
+    this.listeners.forEach(callback => callback(data));
+  }
+
+  processTick(tickData) {
+    const { tick } = tickData;
+    
+    if (!tick || !tick.symbol) {
+      return;
+    }
+
+    // Extract precise price and digit
+    const price = parseFloat(tick.quote).toFixed(5);
+    const digit = this.extractLastDigit(tick.quote);
+
+    // Store in subscription
+    if (!this.subscriptions.has(tick.symbol)) {
+      this.subscriptions.set(tick.symbol, {
         ticks: [],
         digitAnalysis: this.initializeDigitAnalysis()
       });
+    }
+
+    const subscription = this.subscriptions.get(tick.symbol);
+    
+    // Add tick to history
+    subscription.ticks.push({
+      price: parseFloat(price),
+      digit,
+      timestamp: tick.epoch * 1000, // Convert to milliseconds
+      bid: tick.bid || parseFloat(price),
+      ask: tick.ask || parseFloat(price)
     });
+
+    // Keep only last 500 ticks for analysis
+    if (subscription.ticks.length > 500) {
+      subscription.ticks.shift();
+    }
+
+    // Update digit analysis
+    this.updateDigitAnalysis(subscription.digitAnalysis, digit);
+    this.calculatePredictions(subscription.digitAnalysis);
+
+    // Emit update event
+    window.dispatchEvent(new CustomEvent('derivTick', {
+      detail: {
+        symbol: tick.symbol,
+        price: parseFloat(price),
+        digit,
+        bid: tick.bid || parseFloat(price),
+        ask: tick.ask || parseFloat(price),
+        timestamp: tick.epoch * 1000,
+        analysis: subscription.digitAnalysis
+      }
+    }));
+  }
+
+  extractLastDigit(price) {
+    // Extract the last decimal digit with precision
+    const priceStr = price.toString();
+    
+    // Remove decimal point and get last character
+    const digitsOnly = priceStr.replace('.', '');
+    const lastDigit = parseInt(digitsOnly[digitsOnly.length - 1], 10);
+    
+    return isNaN(lastDigit) ? 0 : lastDigit;
   }
 
   initializeDigitAnalysis() {
     return {
-      distribution: Array(10).fill(0),
-      transitions: Array(10).fill(null).map(() => Array(10).fill(0)),
+      distribution: Array(10).fill(0), // Count for each digit 0-9
+      transitions: Array(10).fill(null).map(() => Array(10).fill(0)), // Markov transitions
       lastDigit: null,
       predictions: {},
-      confidence: {}
+      confidence: {},
+      markovPrediction: [],
+      totalTicks: 0
     };
   }
 
-  handleMessage(data) {
-    if (data.error) {
-      console.error('Deriv API error:', data.error.message);
-      return;
-    }
-
-    if (data.tick) {
-      this.processTick(data.tick);
-    }
-
-    if (data.authorize) {
-      console.log('✓ Authorized with Deriv');
-      this.subscribeToPrices();
-    }
-  }
-
-  processTick(tick) {
-    const { symbol, quote } = tick;
-    
-    if (!this.subscriptions.has(symbol)) {
-      this.subscriptions.set(symbol, { 
-        ticks: [],
-        digitAnalysis: this.initializeDigitAnalysis()
-      });
-    }
-
-    const subscription = this.subscriptions.get(symbol);
-    
-    // Store raw price with precision
-    subscription.ticks.push({
-      price: quote,
-      timestamp: Date.now(),
-      bid: tick.bid || quote,
-      ask: tick.ask || quote
-    });
-
-    // Keep only last 100 ticks for analysis
-    if (subscription.ticks.length > this.windowSize) {
-      subscription.ticks.shift();
-    }
-
-    // Extract last digit with precision
-    const digit = this.extractLastDigit(quote);
-    this.digitHistory.push({
-      symbol,
-      digit,
-      price: quote,
-      timestamp: Date.now()
-    });
-
-    // Update digit analysis
-    this.updateDigitAnalysis(subscription.digitAnalysis, digit);
-    
-    // Calculate predictions
-    this.calculatePredictions(subscription.digitAnalysis);
-
-    this.priceHistory.push({
-      symbol,
-      price: quote,
-      digit,
-      timestamp: Date.now(),
-    });
-
-    // Notify listeners with accurate analysis
-    this.listeners.forEach(cb => cb({
-      symbol,
-      price: quote,
-      digit,
-      analysis: subscription.digitAnalysis
-    }));
-
-    // Update UI with accurate data
-    this.updateHeroChart(quote, subscription.digitAnalysis);
-  }
-
-  extractLastDigit(price) {
-    // Extract the last digit with mathematical precision
-    // Handle both integer and decimal prices
-    const priceStr = price.toFixed(5); // 5 decimal precision
-    const lastChar = priceStr.replace('.', '').slice(-1);
-    return parseInt(lastChar, 10);
-  }
-
   updateDigitAnalysis(analysis, currentDigit) {
-    // Update distribution
+    // Increment digit count
     analysis.distribution[currentDigit]++;
+    analysis.totalTicks++;
 
-    // Update transitions if we have a previous digit
+    // Track transitions from previous digit
     if (analysis.lastDigit !== null) {
       analysis.transitions[analysis.lastDigit][currentDigit]++;
     }
@@ -176,118 +201,151 @@ class DerivMarketDataSync {
   }
 
   calculatePredictions(analysis) {
-    const totalCount = analysis.distribution.reduce((a, b) => a + b, 0);
+    const total = analysis.distribution.reduce((a, b) => a + b, 0);
     
-    if (totalCount === 0) return;
+    if (total === 0) return;
 
-    // Calculate frequency percentages
-    const frequencies = analysis.distribution.map((count, digit) => ({
-      digit,
-      count,
-      percentage: (count / totalCount * 100).toFixed(2),
-      probability: (count / totalCount).toFixed(4)
-    }));
+    // Calculate digit probabilities
+    const digitStats = analysis.distribution.map((count, digit) => {
+      const percentage = (count / total * 100).toFixed(2);
+      return {
+        digit,
+        count,
+        percentage: parseFloat(percentage),
+        probability: (count / total).toFixed(6)
+      };
+    });
 
-    // Sort by frequency
-    frequencies.sort((a, b) => b.count - a.count);
+    // Sort by frequency (highest to lowest)
+    digitStats.sort((a, b) => b.count - a.count);
 
-    // Store predictions with confidence
+    // Store predictions
     analysis.predictions = {
-      mostLikely: frequencies[0].digit,
-      leastLikely: frequencies[9].digit,
-      top3: frequencies.slice(0, 3),
-      distribution: frequencies
+      mostLikely: digitStats[0].digit,
+      mostLikelyProbability: digitStats[0].percentage,
+      leastLikely: digitStats[9].digit,
+      leastLikelyProbability: digitStats[9].percentage,
+      top5: digitStats.slice(0, 5),
+      distribution: digitStats
     };
 
-    // Calculate confidence levels
-    const topFreq = frequencies[0].count;
-    const secondFreq = frequencies[1].count;
-    const confidence = ((topFreq - secondFreq) / totalCount * 100).toFixed(2);
+    // Calculate confidence level
+    const topCount = digitStats[0].count;
+    const secondCount = digitStats[1]?.count || 0;
+    const confidenceGap = topCount - secondCount;
+    const confidence = ((confidenceGap / total) * 100).toFixed(2);
 
     analysis.confidence = {
-      overall: confidence,
-      mostLikely: parseFloat(frequencies[0].probability) * 100,
-      leastLikely: parseFloat(frequencies[9].probability) * 100
+      overall: parseFloat(confidence),
+      mostLikely: digitStats[0].percentage,
+      secondMostLikely: digitStats[1]?.percentage || 0,
+      distributionStrength: total > 100 ? 'High' : total > 30 ? 'Medium' : 'Low'
     };
 
     // Markov transition predictions
     if (analysis.lastDigit !== null) {
       const transitionRow = analysis.transitions[analysis.lastDigit];
-      const totalTransitions = transitionRow.reduce((a, b) => a + b, 0);
-      
-      if (totalTransitions > 0) {
-        analysis.markovPrediction = transitionRow.map((count, nextDigit) => ({
-          nextDigit,
-          probability: (count / totalTransitions * 100).toFixed(2),
-          count
-        })).filter(p => p.count > 0).sort((a, b) => b.probability - a.probability);
+      const transitionTotal = transitionRow.reduce((a, b) => a + b, 0);
+
+      if (transitionTotal > 0) {
+        analysis.markovPrediction = transitionRow
+          .map((count, nextDigit) => ({
+            nextDigit,
+            probability: parseFloat((count / transitionTotal * 100).toFixed(2)),
+            count,
+            occurrences: count
+          }))
+          .filter(p => p.count > 0)
+          .sort((a, b) => b.probability - a.probability)
+          .slice(0, 5);
       }
     }
   }
 
-  updateHeroChart(latestPrice, analysis) {
-    window.dispatchEvent(new CustomEvent('marketUpdate', { 
-      detail: { 
-        price: latestPrice,
-        analysis: analysis
-      } 
-    }));
-  }
+  subscribe(symbols) {
+    // Ensure symbols is an array
+    const symbolArray = Array.isArray(symbols) ? symbols : [symbols];
 
-  onPriceUpdate(callback) {
-    this.listeners.push(callback);
-  }
-
-  subscribe(symbol) {
-    if (this.connection && this.connection.readyState === WebSocket.OPEN) {
+    symbolArray.forEach(symbol => {
       const request = {
         ticks: symbol,
-        req_id: this.requestId++,
+        subscribe: 1,
+        req_id: this.requestId++
       };
-      this.connection.send(JSON.stringify(request));
-    }
+
+      console.log(`📊 Subscribing to ${symbol}...`);
+      this.send(request);
+
+      // Initialize subscription tracking
+      if (!this.subscriptions.has(symbol)) {
+        this.subscriptions.set(symbol, {
+          ticks: [],
+          digitAnalysis: this.initializeDigitAnalysis()
+        });
+      }
+    });
   }
 
-  disconnect() {
-    if (this.connection) {
-      this.connection.close();
-    }
+  unsubscribe(symbol) {
+    const request = {
+      forget: symbol,
+      req_id: this.requestId++
+    };
+    this.send(request);
+    this.subscriptions.delete(symbol);
   }
 
-  getAccurateAnalysis(symbol) {
+  getAnalysis(symbol) {
     const subscription = this.subscriptions.get(symbol);
     if (!subscription) return null;
 
+    const { digitAnalysis, ticks } = subscription;
     return {
-      recentDigits: this.digitHistory.slice(-20),
-      distribution: subscription.digitAnalysis.distribution,
-      predictions: subscription.digitAnalysis.predictions,
-      confidence: subscription.digitAnalysis.confidence,
-      markovPrediction: subscription.digitAnalysis.markovPrediction,
-      lastPrice: subscription.ticks[subscription.ticks.length - 1]?.price,
-      sampleSize: subscription.ticks.length
+      symbol,
+      lastPrice: ticks.length > 0 ? ticks[ticks.length - 1].price : null,
+      lastDigit: digitAnalysis.lastDigit,
+      sampleSize: ticks.length,
+      predictions: digitAnalysis.predictions,
+      confidence: digitAnalysis.confidence,
+      markovPrediction: digitAnalysis.markovPrediction,
+      distribution: digitAnalysis.distribution,
+      recentTicks: ticks.slice(-20)
     };
   }
 
-  getDigitPercentage(symbol, digit) {
-    const subscription = this.subscriptions.get(symbol);
-    if (!subscription) return null;
+  getAllAnalysis() {
+    const analysis = {};
+    this.subscriptions.forEach((_, symbol) => {
+      analysis[symbol] = this.getAnalysis(symbol);
+    });
+    return analysis;
+  }
 
-    const total = subscription.digitAnalysis.distribution.reduce((a, b) => a + b, 0);
-    if (total === 0) return 0;
+  onUpdate(callback) {
+    this.listeners.push(callback);
+  }
 
-    return ((subscription.digitAnalysis.distribution[digit] / total) * 100).toFixed(2);
+  disconnect() {
+    if (this.ws) {
+      this.ws.close();
+      this.isConnected = false;
+    }
+  }
+
+  isReady() {
+    return this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN;
   }
 }
 
-// Initialize market data sync
-const marketSync = new DerivMarketDataSync();
+// Initialize global Deriv manager
+const deriv = new DerivWebSocketManager();
 
-// Canvas chart rendering
+// Canvas rendering
 const canvas = document.getElementById('heroChart');
 const ctx = canvas.getContext('2d');
 let priceHistory = [];
 let currentAnalysis = null;
+let connectionStatus = 'disconnected';
 
 function resizeCanvas() {
   const ratio = window.devicePixelRatio || 1;
@@ -299,26 +357,28 @@ function resizeCanvas() {
 }
 
 function drawChart() {
-  if (!canvas) return;
+  if (!canvas || !ctx) return;
 
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
 
   ctx.clearRect(0, 0, w, h);
 
-  // Background panels
+  // Background
   ctx.fillStyle = 'rgba(16, 18, 24, 0.7)';
   ctx.fillRect(0, 0, w, h);
 
-  // Grid lines
+  // Grid
   ctx.strokeStyle = 'rgba(255,255,255,0.06)';
   ctx.lineWidth = 1;
+  
   for (let y = 0; y <= h; y += 40) {
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(w, y);
     ctx.stroke();
   }
+  
   for (let x = 0; x <= w; x += 48) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
@@ -326,35 +386,35 @@ function drawChart() {
     ctx.stroke();
   }
 
-  // Draw price history if available
+  // Draw price data
   if (priceHistory.length > 1) {
     drawPriceChart(w, h);
   } else {
     drawPlaceholderChart(w, h);
   }
 
-  // Draw digit analysis overlay
+  // Draw analysis overlay
   if (currentAnalysis && currentAnalysis.predictions) {
-    drawDigitAnalysisOverlay(w, h, currentAnalysis);
+    drawAnalysisOverlay(w, h);
   }
 
-  // Live indicator with accuracy status
-  drawLiveIndicator(w, h);
+  // Draw status indicator
+  drawStatusIndicator(w, h);
 }
 
 function drawPriceChart(w, h) {
-  const maxPrice = Math.max(...priceHistory.map(p => p.price));
-  const minPrice = Math.min(...priceHistory.map(p => p.price));
+  const prices = priceHistory.map(p => p.price);
+  const maxPrice = Math.max(...prices);
+  const minPrice = Math.min(...prices);
   const priceRange = maxPrice - minPrice || 1;
 
-  // Normalize price history to chart coordinates
   const points = priceHistory.map((p, i) => {
     const x = (i / (priceHistory.length - 1)) * w;
     const y = h - ((p.price - minPrice) / priceRange) * (h - 60) - 30;
     return { x, y, price: p.price, digit: p.digit };
   });
 
-  // Draw line
+  // Line
   ctx.beginPath();
   points.forEach((p, i) => {
     if (i === 0) ctx.moveTo(p.x, p.y);
@@ -367,10 +427,11 @@ function drawPriceChart(w, h) {
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Fill area
+  // Area fill
   const grad = ctx.createLinearGradient(0, 0, 0, h);
   grad.addColorStop(0, 'rgba(141,156,255,0.38)');
   grad.addColorStop(1, 'rgba(141,156,255,0.04)');
+
   ctx.beginPath();
   points.forEach((p, i) => {
     if (i === 0) ctx.moveTo(p.x, p.y);
@@ -382,91 +443,66 @@ function drawPriceChart(w, h) {
   ctx.fillStyle = grad;
   ctx.fill();
 
-  // Latest price dot with digit indicator
+  // Latest point indicator
   if (points.length > 0) {
     const lastPoint = points[points.length - 1];
     ctx.beginPath();
     ctx.arc(lastPoint.x, lastPoint.y, 6, 0, Math.PI * 2);
     ctx.fillStyle = '#38c793';
     ctx.fill();
-    
-    // Draw digit label
+
+    // Digit label
     ctx.fillStyle = '#f4f6f8';
-    ctx.font = 'bold 10px IBM Plex Mono';
+    ctx.font = 'bold 11px IBM Plex Mono';
     ctx.textAlign = 'center';
-    ctx.fillText(lastPoint.digit, lastPoint.x, lastPoint.y - 14);
+    ctx.fillText(lastPoint.digit, lastPoint.x, lastPoint.y - 16);
   }
 }
 
-function drawDigitAnalysisOverlay(w, h, analysis) {
-  if (!analysis.predictions || !analysis.predictions.top3) return;
+function drawAnalysisOverlay(w, h) {
+  if (!currentAnalysis.predictions.top5) return;
 
-  const boxWidth = 160;
-  const boxHeight = 100;
-  const startX = 14;
-  const startY = 14;
+  const boxW = 180;
+  const boxH = 110;
+  const x = 14;
+  const y = 14;
 
-  // Semi-transparent background
-  ctx.fillStyle = 'rgba(8, 9, 12, 0.85)';
-  ctx.fillRect(startX, startY, boxWidth, boxHeight);
+  // Background
+  ctx.fillStyle = 'rgba(8, 9, 12, 0.92)';
+  ctx.fillRect(x, y, boxW, boxH);
   
   ctx.strokeStyle = 'rgba(141,156,255,0.3)';
   ctx.lineWidth = 1;
-  ctx.strokeRect(startX, startY, boxWidth, boxHeight);
+  ctx.strokeRect(x, y, boxW, boxH);
 
   // Title
-  ctx.fillStyle = 'rgba(141,156,255,0.9)';
-  ctx.font = 'bold 11px IBM Plex Mono';
-  ctx.fillText('DIGIT PREDICTION', startX + 8, startY + 16);
+  ctx.fillStyle = 'rgba(141,156,255,0.95)';
+  ctx.font = 'bold 10px IBM Plex Mono';
+  ctx.textAlign = 'left';
+  ctx.fillText('DIGIT ANALYSIS', x + 8, y + 14);
 
-  // Top 3 predictions with percentages
-  let y = startY + 32;
-  analysis.predictions.top3.forEach((pred, idx) => {
-    ctx.fillStyle = idx === 0 ? '#38c793' : 'rgba(244,246,248,0.7)';
-    ctx.font = idx === 0 ? 'bold 10px IBM Plex Mono' : '10px IBM Plex Mono';
+  // Confidence
+  ctx.fillStyle = 'rgba(244,246,248,0.7)';
+  ctx.font = '9px IBM Plex Mono';
+  ctx.fillText(`Conf: ${currentAnalysis.confidence.overall}%`, x + 8, y + 28);
+
+  // Top predictions
+  let py = y + 42;
+  currentAnalysis.predictions.top5.slice(0, 3).forEach((pred, idx) => {
+    const barW = (pred.percentage / 100) * 100;
     
-    const barWidth = parseFloat(pred.percentage) / 100 * 100;
-    ctx.fillRect(startX + 8, y, barWidth, 6);
+    ctx.fillStyle = idx === 0 ? 'rgba(56,199,147,0.6)' : 'rgba(141,156,255,0.4)';
+    ctx.fillRect(x + 8, py, barW, 5);
     
     ctx.fillStyle = '#f4f6f8';
-    ctx.fillText(`${pred.digit}: ${pred.percentage}%`, startX + 8, y + 16);
-    y += 22;
+    ctx.font = idx === 0 ? 'bold 9px IBM Plex Mono' : '9px IBM Plex Mono';
+    ctx.fillText(`${pred.digit}: ${pred.percentage}%`, x + 8, py + 16);
+    
+    py += 18;
   });
 }
 
-function drawLiveIndicator(w, h) {
-  // Status box
-  ctx.fillStyle = 'rgba(16,18,24,0.9)';
-  ctx.fillRect(w - 200, 20, 180, 70);
-  ctx.strokeStyle = 'rgba(141,156,255,0.26)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(w - 200, 20, 180, 70);
-
-  // Title
-  ctx.fillStyle = '#f4f6f8';
-  ctx.font = 'bold 12px IBM Plex Mono';
-  ctx.fillText('IDMarks LIVE', w - 188, 38);
-
-  // Status indicator
-  ctx.fillStyle = currentAnalysis ? '#38c793' : '#ff6b7a';
-  ctx.beginPath();
-  ctx.arc(w - 30, 36, 4, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = currentAnalysis ? '#38c793' : '#ff6b7a';
-  ctx.font = '10px IBM Plex Mono';
-  ctx.fillText(currentAnalysis ? 'SYNCED' : 'CONNECTING', w - 188, 58);
-
-  // Sample size
-  if (currentAnalysis) {
-    ctx.fillStyle = 'rgba(244,246,248,0.6)';
-    ctx.font = '9px IBM Plex Mono';
-    ctx.fillText(`n=${currentAnalysis.sampleSize}`, w - 188, 72);
-  }
-}
-
 function drawPlaceholderChart(w, h) {
-  // Placeholder animation while waiting for live data
   const time = Date.now() / 3000;
 
   ctx.beginPath();
@@ -483,102 +519,167 @@ function drawPlaceholderChart(w, h) {
   ctx.stroke();
   ctx.shadowBlur = 0;
 
-  // Pulse for "waiting for data"
   const pulseOpacity = 0.5 + Math.sin(time * 4) * 0.3;
-  ctx.fillStyle = `rgba(141,156,255,${pulseOpacity * 0.2})`;
+  ctx.fillStyle = `rgba(141,156,255,${pulseOpacity * 0.15})`;
   ctx.fillRect(0, 0, w, h);
 }
 
-// Listen for market updates
-window.addEventListener('marketUpdate', (e) => {
+function drawStatusIndicator(w, h) {
+  const boxW = 200;
+  const boxH = 75;
+  const x = w - boxW - 14;
+  const y = 14;
+
+  // Background
+  ctx.fillStyle = 'rgba(16,18,24,0.92)';
+  ctx.fillRect(x, y, boxW, boxH);
+
+  ctx.strokeStyle = 'rgba(141,156,255,0.26)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, boxW, boxH);
+
+  // Title
+  ctx.fillStyle = '#f4f6f8';
+  ctx.font = 'bold 12px IBM Plex Mono';
+  ctx.textAlign = 'left';
+  ctx.fillText('IDMarks LIVE', x + 12, y + 18);
+
+  // Status indicator
+  const statusColor = connectionStatus === 'connected' ? '#38c793' : 
+                      connectionStatus === 'connecting' ? '#ffc107' : '#ff6b7a';
+  const statusText = connectionStatus === 'connected' ? 'SYNCED' :
+                     connectionStatus === 'connecting' ? 'CONNECTING' : 'OFFLINE';
+
+  ctx.fillStyle = statusColor;
+  ctx.beginPath();
+  ctx.arc(x + 12, y + 36, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = statusColor;
+  ctx.font = '10px IBM Plex Mono';
+  ctx.fillText(statusText, x + 24, y + 40);
+
+  // Details
+  if (currentAnalysis && currentAnalysis.sampleSize > 0) {
+    ctx.fillStyle = 'rgba(244,246,248,0.6)';
+    ctx.font = '9px IBM Plex Mono';
+    ctx.fillText(`n=${currentAnalysis.sampleSize} | Digit: ${currentAnalysis.lastDigit}`, x + 12, y + 62);
+  }
+}
+
+// Listen for Deriv ticks
+window.addEventListener('derivTick', (e) => {
+  const detail = e.detail;
   priceHistory.push({
-    price: e.detail.price,
-    digit: e.detail.analysis?.lastDigit || 0,
-    timestamp: Date.now()
+    price: detail.price,
+    digit: detail.digit,
+    timestamp: detail.timestamp
   });
 
-  currentAnalysis = e.detail.analysis;
+  currentAnalysis = detail.analysis;
+  connectionStatus = 'connected';
 
-  // Keep last 200 ticks for visualization
+  // Keep last 200 for visualization
   if (priceHistory.length > 200) {
     priceHistory.shift();
   }
+
   drawChart();
 });
 
-// Initialize connection and sync
-async function initializeMarketSync() {
+// Initialize Deriv connection
+async function initializeDerivConnection() {
+  connectionStatus = 'connecting';
   try {
-    await marketSync.connect();
-    console.log('✓ Market data sync initialized with precision digit analysis');
+    await deriv.connect();
+    connectionStatus = 'connected';
+    console.log('✓ Connected to Deriv WebSocket');
+
+    // Subscribe to popular Deriv synthetic indices
+    deriv.subscribe([
+      'R_10',      // Volatility Index 10
+      'R_25',      // Volatility Index 25
+      'R_50',      // Volatility Index 50
+      'R_100',     // Volatility Index 100
+      'FRXEURJPY', // EUR/JPY
+      'FRXEURUSD'  // EUR/USD
+    ]);
+
   } catch (error) {
-    console.error('Failed to connect to market data:', error);
+    console.error('Failed to connect to Deriv:', error);
+    connectionStatus = 'offline';
+    console.log('Starting demo mode...');
     startDemoMode();
   }
 }
 
 function startDemoMode() {
-  console.log('Starting demo mode with realistic simulated data...');
+  console.log('🎬 Demo mode: Simulating Deriv market data');
   let basePrice = 50000;
   const digitWeights = [0.12, 0.09, 0.11, 0.08, 0.14, 0.10, 0.09, 0.13, 0.07, 0.07];
-  
-  setInterval(() => {
+
+  connectionStatus = 'connected';
+
+  const demoInterval = setInterval(() => {
     basePrice += (Math.random() - 0.5) * 100;
-    
-    // Simulate weighted digit distribution
-    const randomDigit = Math.random();
+
+    // Weighted random digit
+    const randomVal = Math.random();
     let digit = 0;
     let cumulative = 0;
     for (let i = 0; i < 10; i++) {
       cumulative += digitWeights[i];
-      if (randomDigit <= cumulative) {
+      if (randomVal <= cumulative) {
         digit = i;
         break;
       }
     }
-    
-    // Simulate analysis update
-    const mockAnalysis = {
-      lastDigit: digit,
-      distribution: Array(10).fill(0).map((_, i) => Math.floor(Math.random() * 20)),
-      predictions: {
-        mostLikely: digit,
-        top3: [
-          { digit, percentage: '22.50', probability: '0.2250' },
-          { digit: (digit + 1) % 10, percentage: '18.20', probability: '0.1820' },
-          { digit: (digit + 2) % 10, percentage: '15.40', probability: '0.1540' }
-        ]
-      },
-      confidence: {
-        overall: '45.30',
-        mostLikely: 22.50,
-        leastLikely: 7.10
-      },
-      sampleSize: 100
-    };
 
     priceHistory.push({
       price: basePrice,
-      digit: digit,
+      digit,
       timestamp: Date.now()
     });
 
-    currentAnalysis = mockAnalysis;
+    currentAnalysis = {
+      lastDigit: digit,
+      sampleSize: priceHistory.length,
+      predictions: {
+        top5: [
+          { digit, percentage: 22.50 },
+          { digit: (digit + 1) % 10, percentage: 18.20 },
+          { digit: (digit + 2) % 10, percentage: 15.40 }
+        ]
+      },
+      confidence: {
+        overall: 45.30
+      }
+    };
 
     if (priceHistory.length > 200) {
       priceHistory.shift();
     }
+
     drawChart();
-  }, 500);
+  }, 400);
 }
 
 window.addEventListener('resize', resizeCanvas);
 
-// Start on load
+// Initialize on load
 window.addEventListener('load', () => {
   resizeCanvas();
-  initializeMarketSync();
+  initializeDerivConnection();
 });
 
-// Fallback draw on page start
+// Initial draw
 resizeCanvas();
+
+// Export for debugging
+window.derivDebug = {
+  manager: deriv,
+  getAnalysis: () => deriv.getAllAnalysis(),
+  subscribe: (symbol) => deriv.subscribe(symbol),
+  unsubscribe: (symbol) => deriv.unsubscribe(symbol),
+  status: () => connectionStatus
+};
