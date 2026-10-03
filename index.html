@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IDMarks — Trading workspace</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-content">
+      <div class="brand">
+        <div class="brand-mark">
+          <i></i>
+          <i></i>
+          <i></i>
+        </div>
+        <span class="brand-text">IDMarks</span>
+      </div>
+      <nav class="nav">
+        <a href="#features">Features</a>
+        <a href="#tools">Tools</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#docs">Docs</a>
+      </nav>
+      <button class="btn-cta">Launch Workspace</button>
+    </div>
+  </header>
+
+  <!-- HERO SECTION -->
+  <section class="hero">
+    <div class="hero-content">
+      <h1 class="hero-title">Synthetic Indices Analysis & Execution Platform</h1>
+      <p class="hero-subtitle">Master real-time digit patterns with quantitative precision. Automated trading workspace for precision-driven execution.</p>
+      <div class="hero-cta">
+        <button class="btn btn-primary">Start Trading</button>
+        <button class="btn btn-secondary">View Demo</button>
+      </div>
+    </div>
+    <div class="hero-visual">
+      <div class="visual-container">
+        <canvas id="heroChart"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES SECTION -->
+  <section id="features" class="features">
+    <div class="section-header">
+      <h2>Powered by Precision</h2>
+      <p>Everything you need for quantitative digit analysis</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <h3>Real-Time Analysis</h3>
+        <p>Live digit distribution tracking with sub-millisecond latency across all synthetic indices.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🎯</div>
+        <h3>Automated Execution</h3>
+        <p>Martingale and Minimum Difference (pp) execution engines built for precision trading.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📈</div>
+        <h3>Pattern Recognition</h3>
+        <p>Advanced frequency bubble analysis and Markov mesh visualization for trend identification.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔐</div>
+        <h3>Enterprise Security</h3>
+        <p>Bank-grade encryption and compliance with global trading regulations.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">⚡</div>
+        <h3>Custom Workflows</h3>
+        <p>Build and deploy custom trading strategies with our visual tool builder.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🌐</div>
+        <h3>Multi-Asset</h3>
+        <p>Trade across synthetic indices, forex, and commodities in one unified workspace.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- TOOLS SECTION -->
+  <section id="tools" class="tools">
+    <div class="section-header">
+      <h2>Quantitative Tools</h2>
+      <p>Three powerful visualization engines for digit analysis</p>
+    </div>
+    <div class="tools-grid">
+      <div class="tool-card">
+        <div class="tool-header">
+          <h3>Digit Distribution</h3>
+          <span class="tool-badge">Core</span>
+        </div>
+        <p>Real-time histogram of digit frequency across all indices. Identify hotspots and cold zones instantly.</p>
+        <div class="tool-visual distribution"></div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-header">
+          <h3>Frequency Bubbles</h3>
+          <span class="tool-badge">Advanced</span>
+        </div>
+        <p>Bubble cloud visualization mapping digit co-occurrence patterns. Size and color intensity indicate probability weight.</p>
+        <div class="tool-visual bubbles"></div>
+      </div>
+      <div class="tool-card">
+        <div class="tool-header">
+          <h3>Digit Transitions</h3>
+          <span class="tool-badge">Pro</span>
+        </div>
+        <p>Markov mesh animation showing state transitions between consecutive digits with confidence scoring.</p>
+        <div class="tool-visual transitions"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- EXECUTION ENGINE SECTION -->
+  <section class="execution-engine">
+    <div class="section-header">
+      <h2>Execution Intelligence</h2>
+      <p>Two proven trading algorithms optimized for synthetic indices</p>
+    </div>
+    <div class="engines-grid">
+      <div class="engine-card">
+        <div class="engine-icon">🎲</div>
+        <h3>Martingale Engine</h3>
+        <p>Progressive stake adjustment based on loss sequences. Sophisticated bankroll management with configurable progression ratios and drawdown limits.</p>
+        <ul class="engine-features">
+          <li>Dynamic stake scaling</li>
+          <li>Sequence detection</li>
+          <li>Drawdown protection</li>
+          <li>Real-time equity curve</li>
+        </ul>
+      </div>
+      <div class="engine-card">
+        <div class="engine-icon">📊</div>
+        <h3>Minimum Difference (pp)</h3>
+        <p>Statistical arbitrage exploiting digit sequence deviations from expected distribution. Captures alpha through probability-weighted entry signals.</p>
+        <ul class="engine-features">
+          <li>Statistical deviation scoring</li>
+          <li>Probability weighting</li>
+          <li>Drawdown optimization</li>
+          <li>Live confidence metrics</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING SECTION -->
+  <section id="pricing" class="pricing">
+    <div class="section-header">
+      <h2>Simple, Transparent Pricing</h2>
+      <p>Choose the plan that fits your trading needs</p>
+    </div>
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <h3>Starter</h3>
+        <p class="price">$29<span>/mo</span></p>
+        <p class="price-desc">Perfect for learning</p>
+        <ul class="pricing-features">
+          <li>✓ Digit Distribution tool</li>
+          <li>✓ Real-time data (15-min delay)</li>
+          <li>✓ Basic Martingale engine</li>
+          <li>✗ Frequency Bubbles</li>
+          <li>✗ Advanced analytics</li>
+        </ul>
+        <button class="btn btn-secondary">Get Started</button>
+      </div>
+      <div class="pricing-card featured">
+        <div class="featured-badge">Most Popular</div>
+        <h3>Professional</h3>
+        <p class="price">$99<span>/mo</span></p>
+        <p class="price-desc">For active traders</p>
+        <ul class="pricing-features">
+          <li>✓ All Starter features</li>
+          <li>✓ Live tick data</li>
+          <li>✓ Frequency Bubbles</li>
+          <li>✓ Both execution engines</li>
+          <li>✓ Custom workflows</li>
+        </ul>
+        <button class="btn btn-primary">Start Free Trial</button>
+      </div>
+      <div class="pricing-card">
+        <h3>Enterprise</h3>
+        <p class="price">Custom</p>
+        <p class="price-desc">Unlimited potential</p>
+        <ul class="pricing-features">
+          <li>✓ All Professional features</li>
+          <li>✓ Digit Transitions (Markov)</li>
+          <li>✓ API access</li>
+          <li>✓ Dedicated support</li>
+          <li>✓ White-label options</li>
+        </ul>
+        <button class="btn btn-secondary">Contact Sales</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS SECTION -->
+  <section class="stats">
+    <div class="stat-item">
+      <div class="stat-number">50K+</div>
+      <div class="stat-label">Active Traders</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">$2.3B</div>
+      <div class="stat-label">Volume Traded</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">99.97%</div>
+      <div class="stat-label">Uptime SLA</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-number">24/7</div>
+      <div class="stat-label">Support</div>
+    </div>
+  </section>
+
+  <!-- CTA SECTION -->
+  <section class="cta-final">
+    <h2>Ready to Master Digit Trading?</h2>
+    <p>Join thousands of traders using IDMarks for precision execution.</p>
+    <button class="btn btn-primary btn-large">Launch Workspace Now</button>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <div class="brand">
+          <div class="brand-mark">
+            <i></i>
+            <i></i>
+            <i></i>
+          </div>
+          <span class="brand-text">IDMarks</span>
+        </div>
+        <p>Advanced synthetic indices trading platform.</p>
+      </div>
+      <div class="footer-section">
+        <h4>Product</h4>
+        <ul>
+          <li><a href="#features">Features</a></li>
+          <li><a href="#tools">Tools</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="#">Status</a></li>
+        </ul>
+      </div>
+      <div class="footer-section">
+        <h4>Resources</h4>
+        <ul>
+          <li><a href="#">Documentation</a></li>
+          <li><a href="#">API Docs</a></li>
+          <li><a href="#">Blog</a></li>
+          <li><a href="#">Community</a></li>
+        </ul>
+      </div>
+      <div class="footer-section">
+        <h4>Legal</h4>
+        <ul>
+          <li><a href="#">Privacy</a></li>
+          <li><a href="#">Terms</a></li>
+          <li><a href="#">Cookie Policy</a></li>
+          <li><a href="#">Compliance</a></li>
+        </ul>
+      </div>
+      <div class="footer-section">
+        <h4>Connect</h4>
+        <ul>
+          <li><a href="#">Twitter</a></li>
+          <li><a href="#">Discord</a></li>
+          <li><a href="#">LinkedIn</a></li>
+          <li><a href="#">Contact</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2024 IDMarks. All rights reserved. | Domain: idmarks.site</p>
+    </div>
+  </footer>
+
+  <!-- FLOATING ACTION BUTTON -->
+  <div class="floating-actions">
+    <button class="fab fab-add" title="Add Tool">+</button>
+  </div>
+
+  <!-- EMPTY STATE GLYPH (Hidden by default) -->
+  <div class="empty-state-glyph" style="display: none;">
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="50" r="48" stroke="currentColor" stroke-width="2" fill="none"/>
+      <line x1="20" y1="80" x2="80" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
